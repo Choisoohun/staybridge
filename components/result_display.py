@@ -2,22 +2,28 @@ import streamlit as st
 import folium
 from streamlit_folium import st_folium
 from utils.score_calculator import calculate_scores
-from utils.overpass_query import get_facility_count
 import pandas as pd
+import requests
 
-# 고정 마커 태그 및 색상
-HOBBY_TAG_COLOR_MAP = {
-    "영화": {"tag": "amenity=cinema", "color": "red"},
-    "전시": {"tag": "tourism=gallery", "color": "blue"},
-    "산책": {"tag": "leisure=park", "color": "green"},
-    "공예": {"tag": "craft=pottery", "color": "purple"},
-    "쇼핑": {"tag": "shop=mall", "color": "orange"}
-}
-ALL_HOBBIES = list(HOBBY_TAG_COLOR_MAP.keys())
+KAKAO_REST_API_KEY = "d5b327d7ed1a51e4c31331d7f224e005"
 
-# 추가 시설 태그
-SCHOOL_TAG = 'amenity=school'
-HOSPITAL_TAG = 'amenity=hospital'
+def search_places_kakao(query, lat, lon, radius=3000, size=15):
+    headers = {"Authorization": f"KakaoAK {KAKAO_REST_API_KEY}"}
+    params = {
+        "query": query,
+        "y": lat,
+        "x": lon,
+        "radius": radius,
+        "size": size,
+        "sort": "distance"
+    }
+    url = "https://dapi.kakao.com/v2/local/search/keyword.json"
+    response = requests.get(url, headers=headers, params=params)
+    if response.status_code == 200:
+        return response.json()["documents"]
+    else:
+        print("Kakao API 오류:", response.text)
+        return []
 
 def display_results(user_inputs, vacant_data):
     results = calculate_scores(user_inputs, vacant_data)
@@ -37,90 +43,50 @@ def display_results(user_inputs, vacant_data):
     address = selected_result["address"]
     member_scores = selected_result["member_scores"]
 
-    # 연령 조건 확인
-    has_kid = any(member["age"] < 20 for member in user_inputs["members"])
-    has_senior = any(member["age"] >= 65 for member in user_inputs["members"])
+    st.subheader("📍 공실 위치 및 주변 시설 (Kakao 기반)")
+    with st.spinner("주변 시설 정보를 불러오는 중입니다..."):
+        m = folium.Map(location=[lat, lon], zoom_start=14)
 
-    st.subheader("📍 공실 위치 및 주변 시설")
-    m = folium.Map(location=[lat, lon], zoom_start=14)
+        folium.Marker(
+            location=[lat, lon],
+            popup=f"<b>추천 공실</b><br>{address}",
+            icon=folium.Icon(color="gray", icon="home", prefix="fa")
+        ).add_to(m)
 
-    # 공실 마커
-    folium.Marker(
-        location=[lat, lon],
-        popup=f"<b>추천 공실</b><br>{address}",
-        icon=folium.Icon(color="gray", icon="home", prefix="fa")
-    ).add_to(m)
+        folium.Circle(
+            radius=3000,
+            location=[lat, lon],
+            color="#555",
+            fill=True,
+            fill_opacity=0.08
+        ).add_to(m)
 
-    # 반경 원 3km
-    folium.Circle(
-        radius=3000,
-        location=[lat, lon],
-        color="#555",
-        fill=True,
-        fill_opacity=0.08
-    ).add_to(m)
+        kakao_keywords = {
+            "병원": "black",
+            "학교": "cadetblue",
+            "영화관": "red",
+            "전시회관": "blue",
+            "공방": "purple",
+            "공원": "green",
+            "쇼핑몰": "orange"
+        }
 
-    # 모든 취미 시설 마커 (항상 표시)
-    for hobby in ALL_HOBBIES:
-        tag = HOBBY_TAG_COLOR_MAP[hobby]["tag"]
-        color = HOBBY_TAG_COLOR_MAP[hobby]["color"]
-        _, facilities = get_facility_count(tag, lat, lon, radius=3000, return_elements=True)
-        for f in facilities:
-            folium.Marker(
-                location=[f["lat"], f["lon"]],
-                popup=f"{hobby} 관련 시설",
-                icon=folium.Icon(color=color, icon="info-sign")
-            ).add_to(m)
+        for keyword, color in kakao_keywords.items():
+            places = search_places_kakao(keyword, lat, lon)
+            for p in places:
+                try:
+                    y = float(p["y"])
+                    x = float(p["x"])
+                    folium.Marker(
+                        location=[y, x],
+                        popup=f"{keyword} - {p['place_name']}",
+                        icon=folium.Icon(color=color, icon="info-sign")
+                    ).add_to(m)
+                except Exception as e:
+                    print("좌표 변환 실패:", e)
 
-    # 초중고 학교 (20세 미만이 있을 경우)
-    if has_kid:
-        _, schools = get_facility_count(SCHOOL_TAG, lat, lon, radius=3000, return_elements=True)
-        for s in schools:
-            folium.Marker(
-                location=[s["lat"], s["lon"]],
-                popup="학교",
-                icon=folium.Icon(color="cadetblue", icon="book", prefix="fa")
-            ).add_to(m)
+        st_folium(m, width=800, height=600)
 
-    # 병원 (65세 이상이 있을 경우)
-    if has_senior:
-        _, hospitals = get_facility_count(HOSPITAL_TAG, lat, lon, radius=1000, return_elements=True)
-        for h in hospitals:
-            folium.Marker(
-                location=[h["lat"], h["lon"]],
-                popup="병원",
-                icon=folium.Icon(color="black", icon="plus-sign", prefix="fa")
-            ).add_to(m)
-
-    # 범례 UI
-    legend_html = """
-    <div style="
-        position: fixed;
-        top: 50px;
-        right: 50px;
-        background-color: rgba(255, 255, 255, 0.95);
-        padding: 10px 15px;
-        border: 1px solid #ccc;
-        border-radius: 8px;
-        font-size: 14px;
-        z-index: 9999;
-        box-shadow: 2px 2px 6px rgba(0,0,0,0.15);">
-        <b>📌 범례</b><br>
-        <i class="fa fa-home fa-1x" style="color:gray"></i> 공실<br>
-        <i class="fa fa-map-marker fa-1x" style="color:red"></i> 영화관<br>
-        <i class="fa fa-map-marker fa-1x" style="color:blue"></i> 전시회관<br>
-        <i class="fa fa-map-marker fa-1x" style="color:green"></i> 공원<br>
-        <i class="fa fa-map-marker fa-1x" style="color:purple"></i> 공방<br>
-        <i class="fa fa-map-marker fa-1x" style="color:orange"></i> 쇼핑몰<br>
-        <i class="fa fa-map-marker fa-1x" style="color:cadetblue"></i> 학교<br>
-        <i class="fa fa-map-marker fa-1x" style="color:black"></i> 병원<br>
-    </div>
-    """
-    m.get_root().html.add_child(folium.Element(legend_html))
-
-    st_folium(m, width=800, height=600)
-
-    # 구성원 점수 시각화
     st.subheader("📊 구성원별 점수")
     chart_df = pd.DataFrame({
         "구성원": [f"구성원 {i+1}" for i in range(len(member_scores))],
