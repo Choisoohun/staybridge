@@ -3,7 +3,8 @@
 import requests
 import streamlit as st
 
-OVERPASS_URL = "https://overpass.kumi.systems/api/interpreter"
+OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 태그 매핑: facility_tag → (OSM key, OSM value)
