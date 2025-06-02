@@ -1,32 +1,47 @@
 import streamlit as st
+import os
 import pandas as pd
-from components.user_input_form import get_user_inputs
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1) 페이지 설정: 반드시 가장 먼저
+st.set_page_config(page_title="StayBridge", layout="wide")
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+from components.user_input_form import user_input_form
 from components.result_display import display_results
 
-# 페이지 설정
-st.set_page_config(page_title="StayBridge 주거 추천", layout="wide")
-st.title("🏡 StayBridge: 공실 기반 맞춤형 주거지 추천")
-
-# ✅ 세션 상태 초기화 (처음 실행 시)
-if "show_result" not in st.session_state:
-    st.session_state["show_result"] = False
-
-# 데이터 로딩
 @st.cache_data
 def load_data():
-    return pd.read_csv("data/vacant_locations.csv")
+    """
+    data/vacant_locations.csv를 읽어서
+    - 컬럼명: '주소'→'address', '위도'→'latitude', '경도'→'longitude'
+    - 세 개 컬럼만 반환
+    """
+    base_dir = os.path.dirname(__file__)
+    csv_path = os.path.join(base_dir, "data", "vacant_locations.csv")
+    df = pd.read_csv(csv_path)
+    df = df.rename(columns={"주소": "address", "위도": "latitude", "경도": "longitude"})
+    return df[["address", "latitude", "longitude"]]
 
-vacant_data = load_data()
+def main():
+    st.title("🏡 StayBridge: 공실 기반 맞춤형 주거지 추천")
 
-# 사용자 입력
-st.header("👥 사용자 정보 입력")
-user_inputs = get_user_inputs()
+    # 1) 사용자 정보 입력 폼
+    user_inputs = user_input_form()
 
-# 버튼 클릭 → 세션 상태 변경
-if st.button("🏘️ 추천 받기"):
-    st.session_state["show_result"] = True
+    # 2) “공실 추천” 버튼을 누르면 load_data() 호출 → 세션에 저장
+    if st.button("📊 공실 추천"):
+        vacant_data = load_data()
+        st.session_state.user_inputs = user_inputs
+        st.session_state.vacant_data = vacant_data
 
-# 세션 상태에 따라 결과 표시
-if st.session_state["show_result"]:
-    st.header("📍 추천 결과")
-    display_results(user_inputs, vacant_data)
+    # 3) 세션에 user_inputs, vacant_data가 있으면 display_results 호출
+    if "user_inputs" in st.session_state and "vacant_data" in st.session_state:
+        display_results(
+            st.session_state.user_inputs,
+            st.session_state.vacant_data
+        )
+
+if __name__ == "__main__":
+    main()
