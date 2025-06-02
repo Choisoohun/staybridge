@@ -1,28 +1,50 @@
 import streamlit as st
 
-def get_user_inputs():
-    inputs = {}
+def user_input_form():
+    st.header("👥 사용자 정보 입력")
 
-    # 세대 구성원 수
-    num_members = st.number_input("세대 구성원 수", min_value=1, max_value=10, step=1)
+    member_count = st.number_input(
+        "세대 구성원 수",
+        min_value=1,
+        max_value=5,
+        value=1,
+        step=1
+    )
     members = []
-
-    for i in range(num_members):
-        with st.expander(f"구성원 {i+1} 정보"):
-            age = st.number_input(f"나이 (구성원 {i+1})", min_value=0)
-            hobby = st.multiselect(
-                f"취미 (구성원 {i+1})",
-                ["영화", "산책", "전시", "공예", "쇼핑"]
+    for i in range(member_count):
+        # expander는 항상 열린 상태(expanded=True)
+        with st.expander(f"구성원 {i+1} 정보", expanded=True):
+            age = st.number_input(
+                f"나이 (구성원 {i+1})",
+                min_value=0,
+                max_value=100,
+                value=30,
+                key=f"age_{i}"
             )
-            importance = st.slider(f"중요도 (구성원 {i+1})", 1, 5, 3)
-            members.append({"age": age, "hobby": hobby, "importance": importance})
+            hobby = st.multiselect(
+                f"취미 선택 (복수 가능, 구성원 {i+1})",
+                ["영화", "전시", "산책", "공예", "쇼핑"],
+                key=f"hobby_{i}"
+            )
+            importance = st.slider(
+                f"중요도 (가중치, 구성원 {i+1})",
+                1, 5, 3,
+                key=f"importance_{i}"
+            )
+            members.append({
+                "age": age,
+                "hobby": hobby,
+                "importance": importance
+            })
 
-    # 공통 필수 조건 입력
-    region_keyword = st.text_input("지역 필수 조건 (예: 수원시)")
-    subway_required = st.checkbox("지하철 반경 10분 이내 필요")
+    region_keyword = st.text_input(
+        "지역 필수 조건 (예: 수원시)",
+        key="region_keyword"
+    )
 
-    inputs["members"] = members
-    inputs["region_keyword"] = region_keyword
-    inputs["subway_required"] = subway_required
+    # 지하철 접근성 옵션 모두 제거 (요구사항)
 
-    return inputs
+    return {
+        "members": members,
+        "region_keyword": region_keyword
+    }
